@@ -57,10 +57,8 @@ public class SetFns {
               }
             });
 
-    PCollection<KV<T, Void>> left =
-        leftCollection.apply("left collection to KV of elem and Void", elementToVoid);
-    PCollection<KV<T, Void>> right =
-        rightCollection.apply("right collection to KV of elem and Void", elementToVoid);
+    PCollection<KV<T, Void>> left = leftCollection.apply("left collection to KV of elem and Void",elementToVoid);
+    PCollection<KV<T, Void>> right = rightCollection.apply("right collection to KV of elem and Void",elementToVoid);
 
     PCollection<KV<T, CoGbkResult>> coGbkResults =
         KeyedPCollectionTuple.of(leftCollectionTag, left)
