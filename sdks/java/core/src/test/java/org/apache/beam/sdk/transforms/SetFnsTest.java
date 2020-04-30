@@ -95,6 +95,7 @@ public class SetFnsTest {
     PCollection<String> results = left.apply(SetFns.difference(right));
 
     PAssert.that(results).containsInAnyOrder("c", "d");
+
     p.run();
   }
 }
