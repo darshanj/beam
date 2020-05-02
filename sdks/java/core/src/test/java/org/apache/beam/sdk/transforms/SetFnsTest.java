@@ -22,7 +22,6 @@ import org.apache.beam.sdk.testing.PAssert;
 import org.apache.beam.sdk.testing.TestPipeline;
 import org.apache.beam.sdk.testing.ValidatesRunner;
 import org.apache.beam.sdk.values.PCollection;
-import org.apache.beam.sdk.values.PCollectionList;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
@@ -33,68 +32,59 @@ import org.junit.runners.JUnit4;
 @RunWith(JUnit4.class)
 public class SetFnsTest {
   @Rule public final TestPipeline p = TestPipeline.create();
-
-  @Test
-  @Category(ValidatesRunner.class)
-  public void testCommons() {
-
-    PCollection<String> left =
-        p.apply(
-            "left",
-            Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
-
-    PCollection<String> right =
-        p.apply(
-            "right",
-            Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
-
-    PCollectionList<String> commons = left.apply(SetFns.common(right));
-
-    PAssert.that(commons.get(0)).containsInAnyOrder("a", "b");
-    PAssert.that(commons.get(1)).containsInAnyOrder("c", "d");
-    PAssert.that(commons.get(2)).containsInAnyOrder("e", "f");
-
-    p.run();
-  }
-
   @Test
   @Category(ValidatesRunner.class)
   public void testIntersection() {
 
     PCollection<String> left =
-        p.apply(
-            "left",
-            Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
+            p.apply(
+                    "left",
+                    Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
 
     PCollection<String> right =
-        p.apply(
-            "right",
-            Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
+            p.apply(
+                    "right",
+                    Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
 
-    PCollection<String> results = left.apply(SetFns.intersect(right));
-
-    PAssert.that(results).containsInAnyOrder("a", "b");
+    PAssert.that(left.apply(SetFns.intersect(right))).containsInAnyOrder("a", "b");
 
     p.run();
   }
 
   @Test
   @Category(ValidatesRunner.class)
-  public void testDifference() {
+  public void testExcept() {
 
     PCollection<String> left =
-        p.apply(
-            "left",
-            Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
+            p.apply(
+                    "left",
+                    Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
 
     PCollection<String> right =
-        p.apply(
-            "right",
-            Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
+            p.apply(
+                    "right",
+                    Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
 
-    PCollection<String> results = left.apply(SetFns.difference(right));
+    PAssert.that(left.apply(SetFns.except(right))).containsInAnyOrder("e", "f");
 
-    PAssert.that(results).containsInAnyOrder("c", "d");
+    p.run();
+  }
+
+  @Test
+  @Category(ValidatesRunner.class)
+  public void testUnion() {
+
+    PCollection<String> left =
+            p.apply(
+                    "left",
+                    Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
+
+    PCollection<String> right =
+            p.apply(
+                    "right",
+                    Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
+
+    PAssert.that(left.apply(SetFns.union(right))).containsInAnyOrder("a","b","c","d","e", "f");
 
     p.run();
   }
