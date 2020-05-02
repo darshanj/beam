@@ -57,7 +57,7 @@ public class SetFns {
                         });
 
         PCollection<KV<T, Void>> left = leftCollection.apply("Prepare left collection for Grouping", elementToVoid);
-        PCollection<KV<T, Void>> right = rightCollection.apply("Prepare left collection for Grouping", elementToVoid);
+        PCollection<KV<T, Void>> right = rightCollection.apply("Prepare right collection for Grouping", elementToVoid);
 
         PCollection<KV<T, CoGbkResult>> coGbkResults =
                 KeyedPCollectionTuple.of(leftCollectionTag, left)
