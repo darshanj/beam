@@ -32,20 +32,19 @@ import org.junit.runners.JUnit4;
 @RunWith(JUnit4.class)
 public class SetFnsTest {
   @Rule public final TestPipeline p = TestPipeline.create();
-
   @Test
   @Category(ValidatesRunner.class)
   public void testIntersection() {
 
     PCollection<String> left =
-        p.apply(
-            "left",
-            Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
+            p.apply(
+                    "left",
+                    Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
 
     PCollection<String> right =
-        p.apply(
-            "right",
-            Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
+            p.apply(
+                    "right",
+                    Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
 
     PAssert.that(left.apply(SetFns.intersect(right))).containsInAnyOrder("a", "b");
 
@@ -57,14 +56,14 @@ public class SetFnsTest {
   public void testExcept() {
 
     PCollection<String> left =
-        p.apply(
-            "left",
-            Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
+            p.apply(
+                    "left",
+                    Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
 
     PCollection<String> right =
-        p.apply(
-            "right",
-            Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
+            p.apply(
+                    "right",
+                    Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
 
     PAssert.that(left.apply(SetFns.except(right))).containsInAnyOrder("e", "f");
 
@@ -76,16 +75,16 @@ public class SetFnsTest {
   public void testUnion() {
 
     PCollection<String> left =
-        p.apply(
-            "left",
-            Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
+            p.apply(
+                    "left",
+                    Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
 
     PCollection<String> right =
-        p.apply(
-            "right",
-            Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
+            p.apply(
+                    "right",
+                    Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
 
-    PAssert.that(left.apply(SetFns.union(right))).containsInAnyOrder("a", "b", "c", "d", "e", "f");
+    PAssert.that(left.apply(SetFns.union(right))).containsInAnyOrder("a","b","c","d","e", "f");
 
     p.run();
   }
