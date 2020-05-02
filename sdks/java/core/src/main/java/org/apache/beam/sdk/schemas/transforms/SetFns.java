@@ -28,75 +28,106 @@ import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.Iterable
 
 public class SetFns {
 
-    public static <T> SetImpl<T> intersect(PCollection<T> rightCollection) {
-        SerializableBiFunction<Boolean, Boolean, Boolean> intersectFn = (inFirst, inSecond) -> ((inFirst && inSecond) || (!inFirst && !inSecond));
-        return new SetImpl<T>(rightCollection,intersectFn);
+  public static <T> SetImpl<T> intersect(PCollection<T> rightCollection) {
+    SerializableBiFunction<Long, Long, Long> intersectFn =
+        (inFirst, inSecond) -> (inFirst > 0 && inSecond > 0) ? 1L : 0L;
+    return new SetImpl<>(rightCollection, intersectFn);
+  }
+
+  public static <T> SetImpl<T> intersectAll(PCollection<T> rightCollection) {
+    SerializableBiFunction<Long, Long, Long> intersectFn =
+        (inFirst, inSecond) -> (inFirst > 0 && inSecond > 0) ? Math.min(inFirst, inSecond) : 0L;
+    return new SetImpl<>(rightCollection, intersectFn);
+  }
+
+  public static <T> SetImpl<T> except(PCollection<T> rightCollection) {
+    SerializableBiFunction<Long, Long, Long> exceptFn =
+        (inFirst, inSecond) -> inFirst > 0 && inSecond == 0 ? 1L : 0L;
+    return new SetImpl<>(rightCollection, exceptFn);
+  }
+
+  public static <T> SetImpl<T> exceptAll(PCollection<T> rightCollection) {
+    SerializableBiFunction<Long, Long, Long> exceptFn =
+        (inFirst, inSecond) -> {
+          if (inFirst > 0 && inSecond == 0) {
+            return inFirst;
+          } else if (inFirst > 0 && inSecond > 0) {
+            return Math.max(inFirst - inSecond, 0L);
+          }
+          return 0L;
+        };
+    return new SetImpl<>(rightCollection, exceptFn);
+  }
+
+  public static <T> SetImpl<T> unionAll(PCollection<T> rightCollection) {
+    SerializableBiFunction<Long, Long, Long> unionFn = Long::sum;
+    return new SetImpl<>(rightCollection, unionFn);
+  }
+
+  public static <T> SetImpl<T> union(PCollection<T> rightCollection) {
+    SerializableBiFunction<Long, Long, Long> unionFn = (inFirst, inSecond) -> 1L;
+    return new SetImpl<>(rightCollection, unionFn);
+  }
+
+  private static <T> PCollection<T> findComms(
+      PCollection<T> leftCollection,
+      PCollection<T> rightCollection,
+      SerializableBiFunction<Long, Long, Long> fn) {
+
+    TupleTag<Void> leftCollectionTag = new TupleTag<>();
+    TupleTag<Void> rightCollectionTag = new TupleTag<>();
+
+    MapElements<T, KV<T, Void>> elementToVoid =
+        MapElements.via(
+            new SimpleFunction<T, KV<T, Void>>() {
+              @Override
+              public KV<T, Void> apply(T element) {
+                return KV.of(element, null);
+              }
+            });
+
+    PCollection<KV<T, Void>> left =
+        leftCollection.apply("left collection to KV of elem and Void", elementToVoid);
+    PCollection<KV<T, Void>> right =
+        rightCollection.apply("right collection to KV of elem and Void", elementToVoid);
+
+    PCollection<KV<T, CoGbkResult>> coGbkResults =
+        KeyedPCollectionTuple.of(leftCollectionTag, left)
+            .and(rightCollectionTag, right)
+            .apply(CoGroupByKey.create());
+
+    return coGbkResults.apply(
+        ParDo.of(
+            new DoFn<KV<T, CoGbkResult>, T>() {
+
+              @ProcessElement
+              public void processElement(ProcessContext c) {
+                KV<T, CoGbkResult> elementGroups = c.element();
+
+                CoGbkResult value = elementGroups.getValue();
+                long inFirstSize = Iterables.size(value.getAll(leftCollectionTag));
+                long inSecondSize = Iterables.size(value.getAll(rightCollectionTag));
+
+                T element = elementGroups.getKey();
+                for (long i = 0L; i < fn.apply(inFirstSize, inSecondSize); i++) {
+                  c.output(element);
+                }
+              }
+            }));
+  }
+
+  public static class SetImpl<T> extends PTransform<PCollection<T>, PCollection<T>> {
+    private final PCollection<T> rightCollection;
+    private final SerializableBiFunction<Long, Long, Long> fn;
+
+    private SetImpl(PCollection<T> rightCollection, SerializableBiFunction<Long, Long, Long> fn) {
+      this.rightCollection = rightCollection;
+      this.fn = fn;
     }
 
-    public static <T> SetImpl<T> except(PCollection<T> rightCollection) {
-        SerializableBiFunction<Boolean, Boolean, Boolean> exceptFn = (inFirst, inSecond) -> inFirst && !inSecond;
-        return new SetImpl<T>(rightCollection,exceptFn);
+    @Override
+    public PCollection<T> expand(PCollection<T> leftCollection) {
+      return findComms(leftCollection, rightCollection, fn).setCoder(leftCollection.getCoder());
     }
-
-    public static <T> SetImpl<T> union(PCollection<T> rightCollection) {
-        SerializableBiFunction<Boolean, Boolean, Boolean> unionFn = (inFirst, inSecond) -> true;
-        return new SetImpl<T>(rightCollection,unionFn);
-    }
-
-    private static <T> PCollection<T> findComms(PCollection<T> leftCollection, PCollection<T> rightCollection, SerializableBiFunction<Boolean, Boolean, Boolean> fn) {
-
-        TupleTag<Void> leftCollectionTag = new TupleTag<>();
-        TupleTag<Void> rightCollectionTag = new TupleTag<>();
-
-        MapElements<T, KV<T, Void>> elementToVoid =
-                MapElements.via(
-                        new SimpleFunction<T, KV<T, Void>>() {
-                            @Override
-                            public KV<T, Void> apply(T element) {
-                                return KV.of(element, null);
-                            }
-                        });
-
-        PCollection<KV<T, Void>> left = leftCollection.apply("Prepare left collection for Grouping", elementToVoid);
-        PCollection<KV<T, Void>> right = rightCollection.apply("Prepare right collection for Grouping", elementToVoid);
-
-        PCollection<KV<T, CoGbkResult>> coGbkResults =
-                KeyedPCollectionTuple.of(leftCollectionTag, left)
-                        .and(rightCollectionTag, right)
-                        .apply(CoGroupByKey.create());
-
-        return coGbkResults.apply(
-                ParDo.of(new DoFn<KV<T, CoGbkResult>, T>() {
-
-                    @ProcessElement
-                    public void processElement(ProcessContext c) {
-                        KV<T, CoGbkResult> elementGroups = c.element();
-
-                        CoGbkResult value = elementGroups.getValue();
-                        boolean inFirst = Iterables.isEmpty(value.getAll(leftCollectionTag));
-                        boolean inSecond = Iterables.isEmpty(value.getAll(rightCollectionTag));
-
-                        T element = elementGroups.getKey();
-                        if(fn.apply(inFirst, inSecond)) {
-                            c.output(element);
-                        }
-                    }
-                }));
-    }
-
-    public static class SetImpl<T> extends PTransform<PCollection<T>, PCollection<T>> {
-        private final PCollection<T> rightCollection;
-        private SerializableBiFunction<Boolean, Boolean, Boolean> fn;
-
-        private SetImpl(PCollection<T> rightCollection, SerializableBiFunction<Boolean, Boolean, Boolean> fn) {
-            this.rightCollection = rightCollection;
-            this.fn = fn;
-        }
-
-        @Override
-        public PCollection<T> expand(PCollection<T> leftCollection) {
-            return findComms(leftCollection, rightCollection,fn)
-                    .setCoder(leftCollection.getCoder());
-        }
-    }
+  }
 }
