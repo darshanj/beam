@@ -1,27 +1,5 @@
-/*
- * Licensed to the Apache Software Foundation (ASF) under one
- * or more contributor license agreements.  See the NOTICE file
- * distributed with this work for additional information
- * regarding copyright ownership.  The ASF licenses this file
- * to you under the Apache License, Version 2.0 (the
- * "License"); you may not use this file except in compliance
- * with the License.  You may obtain a copy of the License at
- *
- *     http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
 package org.apache.beam.sdk.schemas.transforms;
 
-import static junit.framework.TestCase.assertEquals;
-
-import java.math.BigDecimal;
-import java.util.List;
-import org.apache.beam.sdk.coders.StringUtf8Coder;
 import org.apache.beam.sdk.schemas.Schema;
 import org.apache.beam.sdk.testing.PAssert;
 import org.apache.beam.sdk.testing.TestPipeline;
@@ -29,34 +7,55 @@ import org.apache.beam.sdk.testing.ValidatesRunner;
 import org.apache.beam.sdk.transforms.Create;
 import org.apache.beam.sdk.values.PCollection;
 import org.apache.beam.sdk.values.Row;
-import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.ImmutableList;
+import org.apache.beam.vendor.guava.v26_0_jre.com.google.common.collect.Iterables;
+import org.junit.Before;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.experimental.categories.Category;
 import org.junit.runner.RunWith;
 import org.junit.runners.JUnit4;
 
-/** Tests for SetFns transform. */
+import java.util.Arrays;
+
+import static junit.framework.TestCase.assertEquals;
+
 @RunWith(JUnit4.class)
 public class SetFnsTest {
-  @Rule public final TestPipeline p = TestPipeline.create();
+
+  @Rule
+  public final TestPipeline p = TestPipeline.create();
+
+  Schema schema = Schema.builder().addStringField("alphabet").build();
+
+  static PCollection<String> left;
+  static PCollection<String> right;
+  static PCollection<Row> leftRow;
+  static PCollection<Row> rightRow;
+
+  private Iterable<Row> toRows(String... values) {
+    return Iterables.transform(Arrays.asList(values), (elem) -> Row.withSchema(schema).addValues(elem).build());
+  }
+
+  @Before
+  public void setup() {
+
+    String[] leftData = {"a", "a", "a", "b", "b", "c", "d", "d", "g", "g", "h", "h"};
+    String[] rightData = {"a", "a", "b", "b", "b", "c", "d", "d", "e", "e", "f", "f"};
+
+    left = p.apply("left", Create.of(Arrays.asList(leftData)));
+    right = p.apply("right", Create.of(Arrays.asList(rightData)));
+    leftRow = p.apply("leftRow", Create.of(toRows(leftData)).withRowSchema(schema));
+    rightRow = p.apply("rightRow", Create.of(toRows(rightData)).withRowSchema(schema));
+  }
 
   @Test
   @Category(ValidatesRunner.class)
   public void testIntersection() {
+    PAssert.that(left.apply("stringleft",SetFns.intersect(right))).containsInAnyOrder("a", "b", "c", "d");
 
-    PCollection<String> left =
-        p.apply(
-            "left",
-            Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
-
-    PCollection<String> right =
-        p.apply(
-            "right",
-            Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
-
-    PCollection<String> results = left.apply(SetFns.intersect(right));
-    PAssert.that(results).containsInAnyOrder("a", "b");
+    PCollection<Row> results = leftRow.apply(SetFns.intersect(rightRow));
+    PAssert.that(results).containsInAnyOrder(toRows("a", "b", "c", "d"));
+    assertEquals(schema, results.getSchema());
 
     p.run();
   }
@@ -64,20 +63,11 @@ public class SetFnsTest {
   @Test
   @Category(ValidatesRunner.class)
   public void testIntersectionAll() {
+    // Say for Row R, there are m instances on left and n instances on right,
+    // INTERSECT ALL outputs MIN(m, n) instances of R.
 
-    PCollection<String> left =
-        p.apply(
-            "left",
-            Create.of("a", "a", "a", "b", "b", "c", "d", "d").withCoder(StringUtf8Coder.of()));
-
-    PCollection<String> right =
-        p.apply(
-            "right",
-            Create.of("a", "a", "b", "b", "b", "c", "e", "e", "f", "f")
-                .withCoder(StringUtf8Coder.of()));
-
-    PCollection<String> results = left.apply(SetFns.intersectAll(right));
-    PAssert.that(results).containsInAnyOrder("a", "a", "b", "b", "c");
+    PAssert.that(left.apply("strings",SetFns.intersectAll(right))).containsInAnyOrder("a", "a", "b", "b", "c", "d", "d");
+    PAssert.that(leftRow.apply("rows",SetFns.intersectAll(rightRow))).containsInAnyOrder(toRows("a", "a", "b", "b", "c", "d", "d"));
 
     p.run();
   }
@@ -86,19 +76,8 @@ public class SetFnsTest {
   @Category(ValidatesRunner.class)
   public void testExcept() {
 
-    PCollection<String> left =
-        p.apply(
-            "left",
-            Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
-
-    PCollection<String> right =
-        p.apply(
-            "right",
-            Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
-
-    PCollection<String> results = left.apply(SetFns.except(right));
-    PAssert.that(results).containsInAnyOrder("c", "d");
-
+    PAssert.that(left.apply("strings",SetFns.except(right))).containsInAnyOrder("g", "h");
+    PAssert.that(leftRow.apply("rows",SetFns.except(rightRow))).containsInAnyOrder(toRows("g", "h"));
     p.run();
   }
 
@@ -111,95 +90,9 @@ public class SetFnsTest {
     // - EXCEPT [DISTINCT] outputs a single instance of R if m > 0 and n == 0, else
     //   they output 0 instances.
 
-    PCollection<String> left =
-        p.apply("left", Create.of("1", "1", "2", "4", "4").withCoder(StringUtf8Coder.of()));
+    PAssert.that(left.apply("strings",SetFns.exceptAll(right))).containsInAnyOrder("a", "g", "g", "h", "h");
+    PAssert.that(leftRow.apply("rows",SetFns.exceptAll(rightRow))).containsInAnyOrder(toRows("a", "g", "g", "h", "h"));
 
-    PCollection<String> right =
-        p.apply("right", Create.of("1", "2", "3").withCoder(StringUtf8Coder.of()));
-
-    PCollection<String> results = left.apply(SetFns.exceptAll(right));
-    PAssert.that(results).containsInAnyOrder("1", "4", "4");
-
-    p.run();
-  }
-
-  @Test
-  @Category(ValidatesRunner.class)
-  public void testExceptRow() {
-
-    Schema schema =
-        Schema.builder()
-            .addInt64Field("order_id")
-            .addInt32Field("site_id")
-            .addDecimalField("price")
-            .build();
-    PCollection<Row> left =
-        p.apply(
-            "left",
-            Create.of(
-                    Row.withSchema(schema).addValues(1L, 1, new BigDecimal(1.0)).build(),
-                    Row.withSchema(schema).addValues(1L, 1, new BigDecimal(1.0)).build(),
-                    Row.withSchema(schema).addValues(2L, 2, new BigDecimal(2.0)).build(),
-                    Row.withSchema(schema).addValues(4L, 4, new BigDecimal(4.0)).build(),
-                    Row.withSchema(schema).addValues(4L, 4, new BigDecimal(4.0)).build())
-                .withRowSchema(schema));
-
-    PCollection<Row> right =
-        p.apply(
-            "right",
-            Create.of(
-                    Row.withSchema(schema).addValues(1L, 1, new BigDecimal(1.0)).build(),
-                    Row.withSchema(schema).addValues(2L, 2, new BigDecimal(2.0)).build(),
-                    Row.withSchema(schema).addValues(3L, 3, new BigDecimal(3.0)).build())
-                .withRowSchema(schema));
-
-    PCollection<Row> results = left.apply(SetFns.except(right));
-
-    assertEquals(schema, results.getSchema());
-
-    List<Row> expectedRows =
-        ImmutableList.of(Row.withSchema(schema).addValues(4L, 4, new BigDecimal(4.0)).build());
-    PAssert.that(results).containsInAnyOrder(expectedRows);
-    p.run();
-  }
-
-  @Test
-  @Category(ValidatesRunner.class)
-  public void testExceptRowAll() {
-
-    Schema schema =
-        Schema.builder()
-            .addInt64Field("order_id")
-            .addInt32Field("site_id")
-            .addDecimalField("price")
-            .build();
-    PCollection<Row> left =
-        p.apply(
-            "left",
-            Create.of(
-                    Row.withSchema(schema).addValues(1L, 1, new BigDecimal(1.0)).build(),
-                    Row.withSchema(schema).addValues(1L, 1, new BigDecimal(1.0)).build(),
-                    Row.withSchema(schema).addValues(2L, 2, new BigDecimal(2.0)).build(),
-                    Row.withSchema(schema).addValues(4L, 4, new BigDecimal(4.0)).build(),
-                    Row.withSchema(schema).addValues(4L, 4, new BigDecimal(4.0)).build())
-                .withRowSchema(schema));
-
-    PCollection<Row> right =
-        p.apply(
-            "right",
-            Create.of(
-                    Row.withSchema(schema).addValues(1L, 1, new BigDecimal(1.0)).build(),
-                    Row.withSchema(schema).addValues(2L, 2, new BigDecimal(2.0)).build(),
-                    Row.withSchema(schema).addValues(3L, 3, new BigDecimal(3.0)).build())
-                .withRowSchema(schema));
-
-    PCollection<Row> results = left.apply(SetFns.except(right));
-
-    assertEquals(schema, results.getSchema());
-
-    List<Row> expectedRows =
-        ImmutableList.of(Row.withSchema(schema).addValues(4L, 4, new BigDecimal(4.0)).build());
-    PAssert.that(results).containsInAnyOrder(expectedRows);
     p.run();
   }
 
@@ -207,18 +100,8 @@ public class SetFnsTest {
   @Category(ValidatesRunner.class)
   public void testUnion() {
 
-    PCollection<String> left =
-        p.apply(
-            "left",
-            Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
-
-    PCollection<String> right =
-        p.apply(
-            "right",
-            Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
-
-    PCollection<String> results = left.apply(SetFns.union(right));
-    PAssert.that(results).containsInAnyOrder("a", "b", "c", "d", "e", "f");
+    PAssert.that(left.apply("strings",SetFns.union(right))).containsInAnyOrder("a", "b", "c", "d", "e", "f", "g", "h");
+    PAssert.that(leftRow.apply("rows",SetFns.union(rightRow))).containsInAnyOrder(toRows("a", "b", "c", "d", "e", "f", "g", "h"));
 
     p.run();
   }
@@ -227,20 +110,10 @@ public class SetFnsTest {
   @Category(ValidatesRunner.class)
   public void testUnionAll() {
 
-    PCollection<String> left =
-        p.apply(
-            "left",
-            Create.of("a", "a", "b", "b", "c", "c", "d", "d").withCoder(StringUtf8Coder.of()));
-
-    PCollection<String> right =
-        p.apply(
-            "right",
-            Create.of("a", "a", "b", "b", "e", "e", "f", "f").withCoder(StringUtf8Coder.of()));
-
-    PCollection<String> results = left.apply(SetFns.unionAll(right));
-    PAssert.that(results)
-        .containsInAnyOrder(
-            "a", "a", "a", "a", "b", "b", "b", "b", "c", "c", "d", "d", "e", "e", "f", "f");
+    PAssert.that(left.apply("strings",SetFns.unionAll(right))).containsInAnyOrder(
+            "a", "a", "a", "a", "a", "b", "b", "b", "b", "b", "c", "c", "d", "d", "d", "d", "e", "e", "f", "f", "g", "g", "h", "h");
+    PAssert.that(leftRow.apply("rows", SetFns.unionAll(rightRow))).containsInAnyOrder(
+            toRows("a", "a", "a", "a", "a", "b", "b", "b", "b", "b", "c", "c", "d", "d", "d", "d", "e", "e", "f", "f", "g", "g", "h", "h"));
 
     p.run();
   }

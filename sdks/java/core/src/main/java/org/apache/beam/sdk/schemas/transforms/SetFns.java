@@ -49,9 +49,9 @@ public class SetFns {
   public static <T> SetImpl<T> exceptAll(PCollection<T> rightCollection) {
     SerializableBiFunction<Long, Long, Long> exceptFn =
         (inFirst, inSecond) -> {
-          if (inFirst > 0 && inSecond == 0) {
+          if (inFirst > 0 && inSecond == 0) { // Excepts
             return inFirst;
-          } else if (inFirst > 0 && inSecond > 0) {
+          } else if (inFirst > 0 && inSecond > 0) { // Duplicates
             return Math.max(inFirst - inSecond, 0L);
           }
           return 0L;
@@ -69,7 +69,7 @@ public class SetFns {
     return new SetImpl<>(rightCollection, unionFn);
   }
 
-  private static <T> PCollection<T> findComms(
+  private static <T> PCollection<T> performSetOperation(
       PCollection<T> leftCollection,
       PCollection<T> rightCollection,
       SerializableBiFunction<Long, Long, Long> fn) {
@@ -87,9 +87,9 @@ public class SetFns {
             });
 
     PCollection<KV<T, Void>> left =
-        leftCollection.apply("left collection to KV of elem and Void", elementToVoid);
+        leftCollection.apply("PrepareLeftKV", elementToVoid);
     PCollection<KV<T, Void>> right =
-        rightCollection.apply("right collection to KV of elem and Void", elementToVoid);
+        rightCollection.apply("PrepareRightKV", elementToVoid);
 
     PCollection<KV<T, CoGbkResult>> coGbkResults =
         KeyedPCollectionTuple.of(leftCollectionTag, left)
@@ -127,7 +127,7 @@ public class SetFns {
 
     @Override
     public PCollection<T> expand(PCollection<T> leftCollection) {
-      return findComms(leftCollection, rightCollection, fn).setCoder(leftCollection.getCoder());
+      return performSetOperation(leftCollection, rightCollection, fn).setCoder(leftCollection.getCoder());
     }
   }
 }
